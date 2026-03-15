@@ -56,3 +56,8 @@ clean = merged.dropna()
 
 print(f"\nClean dataset : {clean.index[0].strftime('%b %Y')} -> {clean.index[-1].strftime('%b %Y')}  ({len(clean)} months)")
 print(clean.head())
+
+# ── 6. Export cleaned data ────────────────────────────────────────────────────
+clean.index = clean.index.strftime("%b %Y")
+clean.index.name = "Date"
+clean.to_excel("Clean_Data.xlsx")

@@ -32,5 +32,8 @@ None — all three series had complete data within the Jan 2003 – Feb 2026 win
 
 > **Note:** The raw ARBIX sheet contained an asterisk on `AUGUST 2017` (`*AUGUST`), which was a source-data footnote marker. This was corrected directly in `Data.xlsx` before processing.
 
+7. **Export** — `clean.index` is reformatted to `"Mon YYYY"` strings via `strftime("%b %Y")` for readability, then written to `Clean_Data.xlsx` using `DataFrame.to_excel()` (requires `openpyxl`).
+
 ### Output
-`clean` — a 278-row DataFrame indexed by `Date` with columns `ARBIX`, `Bonds`, `Equities`, containing monthly returns expressed as decimals.
+- `clean` — a 278-row DataFrame indexed by `Date` with columns `ARBIX`, `Bonds`, `Equities`, containing monthly returns expressed as decimals.
+- `Clean_Data.xlsx` — the same data persisted to disk for reuse without re-running the cleaning pipeline.
