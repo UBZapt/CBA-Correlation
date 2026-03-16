@@ -72,7 +72,6 @@ clean.to_excel("Clean_Data.xlsx")
 df = pd.read_excel("Clean_Data.xlsx", index_col=0)
 df.index = pd.to_datetime(df.index, format="%b %Y")
 
-# Data is already in monthly return form (decimals) — no transformation needed.
 
 # ── 8. Define periods ─────────────────────────────────────────────────────────
 periods = {
