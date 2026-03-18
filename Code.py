@@ -1,21 +1,28 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from scipy import stats
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 INPUT_FILE     = "Data.xlsx"
 OUTPUT_FILE    = "Clean_Data.xlsx"
 SHEETS         = {"ARBIX": "ARBIX", "Bonds": "Bonds", "Equities": "Equities"}
-MIN_OBS        = 12
+MIN_OBS        = 11
 ROLLING_WINDOW = 12
 
 PERIODS = {
-    "Recession 1\n(Dec 2007 - Jun 2009)": (pd.Timestamp("2007-12-01"), pd.Timestamp("2009-06-01")),
-    "Recession 2\n(Jan 2020 - Jun 2021)": (pd.Timestamp("2020-01-01"), pd.Timestamp("2021-06-01")),
-    "Boom 1\n(Jan 2012 - Dec 2013)":      (pd.Timestamp("2012-01-01"), pd.Timestamp("2013-12-01")),
-    "Boom 2\n(Jan 2023 - Dec 2025)":      (pd.Timestamp("2023-01-01"), pd.Timestamp("2025-12-01")),
+    "GFC\n(Dec 2007 – Jun 2009)":                (pd.Timestamp("2007-12-01"), pd.Timestamp("2009-06-01")),
+    "Post-GFC Expansion\n(Jan 2012 – Dec 2013)":  (pd.Timestamp("2012-01-01"), pd.Timestamp("2013-12-01")),
+    "Covid Stress\n(Feb 2020 – Dec 2020)":         (pd.Timestamp("2020-02-01"), pd.Timestamp("2020-12-01")),
+    "CB Renaissance\n(Jan 2023 – Dec 2025)":       (pd.Timestamp("2023-01-01"), pd.Timestamp("2025-12-01")),
 }
+
+# Period type for shading (index in all_periods after full-sample at index 0)
+# 1=GFC (stress), 2=Post-GFC Expansion (growth), 3=Covid Stress (stress), 4=CB Renaissance (growth)
+_PERIOD_TYPES = {1: "stress", 2: "growth", 3: "stress", 4: "growth"}
+_STRESS_COLOR = "#B22222"
+_GROWTH_COLOR = "#2E7D32"
 
 
 # ── Functions ─────────────────────────────────────────────────────────────────
@@ -76,7 +83,7 @@ def build_clean_dataset(raw):
 
 def calculate_correlations(clean):
     full_label = (
-        f"Full Sample\n({clean.index[0].strftime('%b %Y')} - {clean.index[-1].strftime('%b %Y')})"
+        f"Full Sample\n({clean.index[0].strftime('%b %Y')} – {clean.index[-1].strftime('%b %Y')})"
     )
     all_periods = {full_label: (clean.index.min(), clean.index.max()), **PERIODS}
 
@@ -105,9 +112,12 @@ def plot_correlation_bars(corr_df, all_periods):
     x     = np.arange(len(chart_labels))
     width = 0.35
 
-    fig, ax = plt.subplots(figsize=(13, 6))
-    bars_eq = ax.bar(x - width / 2, corr_df["CBA-Equity"], width, label="CBA-Equity", color="#1F3864")
-    bars_bd = ax.bar(x + width / 2, corr_df["CBA-Bond"],   width, label="CBA-Bond",   color="#C00000")
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    bars_eq = ax.bar(x - width / 2, corr_df["CBA-Equity"], width,
+                     label="CBA–Equity", color="#1F3864")
+    bars_bd = ax.bar(x + width / 2, corr_df["CBA-Bond"],   width,
+                     label="CBA–Bond",   color="#C00000")
 
     for bar in list(bars_eq) + list(bars_bd):
         h = bar.get_height()
@@ -131,7 +141,24 @@ def plot_correlation_bars(corr_df, all_periods):
         "Full Sample and Economic Sub-Periods",
         fontsize=12, fontweight="bold", pad=14,
     )
-    ax.legend(fontsize=10, frameon=False)
+
+    # Colour-code x-tick labels by period type — no background fill to avoid bar colour mixing
+    tick_colors = {0: "black", 1: _STRESS_COLOR, 2: _GROWTH_COLOR,
+                   3: _STRESS_COLOR, 4: _GROWTH_COLOR}
+    for i, tick in enumerate(ax.get_xticklabels()):
+        tick.set_color(tick_colors.get(i, "black"))
+
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        mpatches.Patch(facecolor="#1F3864", label="CBA–Equity"),
+        mpatches.Patch(facecolor="#C00000", label="CBA–Bond"),
+        Line2D([0], [0], marker="s", color="w", markerfacecolor=_STRESS_COLOR,
+               markersize=10, label="Period of Stress"),
+        Line2D([0], [0], marker="s", color="w", markerfacecolor=_GROWTH_COLOR,
+               markersize=10, label="Period of Growth"),
+    ]
+    ax.legend(handles=legend_elements, fontsize=9.5, frameon=False, ncol=2, loc="upper right")
+
     ax.grid(False)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -183,16 +210,18 @@ def plot_scatter(clean, other, color, filename):
 
 
 def plot_volatility(clean):
-    vols   = clean[["ARBIX", "Equities", "Bonds"]].std()
+    # Annualise: monthly std × √12
+    vols   = clean[["ARBIX", "Equities", "Bonds"]].std() * np.sqrt(12)
+    vols_pct = vols * 100          # express as percentage points
     colors = ["#1F3864", "#2E75B6", "#C00000"]
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    bars = ax.bar(vols.index, vols.values, color=colors)
-    for bar, v in zip(bars, vols.values):
-        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.0005, f"{v:.4f}",
+    bars = ax.bar(vols_pct.index, vols_pct.values, color=colors)
+    for bar, v in zip(bars, vols_pct.values):
+        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.05, f"{v:.2f}%",
                 ha="center", va="bottom", fontsize=9, fontweight="bold")
-    ax.set_ylabel("Monthly Return Std Dev", fontsize=11)
-    ax.set_title("Volatility Comparison: Monthly Return Standard Deviations",
+    ax.set_ylabel("Annualised Volatility (%)", fontsize=11)
+    ax.set_title("Volatility Comparison: Annualised Return Standard Deviations",
                  fontsize=12, fontweight="bold", pad=12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -205,20 +234,38 @@ def plot_volatility(clean):
 def plot_down_market(clean):
     down = clean[clean["Equities"] < 0]
     values = [clean["ARBIX"].mean(), down["ARBIX"].mean()]
-    labels = ["All Months", f"Equity Down\nMonths (n={len(down)})"]
+    labels = ["All Months", f"Equity Down Months (n={len(down)})"]
     colors = ["#1F3864", "#C00000"]
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    bars = ax.bar(labels, values, color=colors, width=0.4)
+
+    x = [0.42, 0.84]
+    width = 0.32
+    bars = ax.bar(x, values, color=colors, width=width)
+
+    # Generous y-axis range: 40% headroom above max and below min so labels
+    # never crowd the title or overlap the zero line
+    ymax = max(values)
+    ymin = min(values)
+    yspan = ymax - ymin if ymax != ymin else abs(ymax) or 0.01
+    ax.set_ylim(ymin - yspan * 0.4, ymax + yspan * 0.4)
+
+    # Small fixed offset: 2% of the visible y-span keeps labels tight to bars
+    offset = yspan * 0.02
+
     for bar, v in zip(bars, values):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
-            v + (0.0003 if v >= 0 else -0.0003),
+            v + (offset if v >= 0 else -offset),
             f"{v:.4f}",
             ha="center", va="bottom" if v >= 0 else "top",
             fontsize=10, fontweight="bold",
         )
+
     ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=9.5)
+    ax.set_xlim(0.05, 1.25)
     ax.set_ylabel("Avg ARBIX Monthly Return", fontsize=11)
     ax.set_title("ARBIX Performance in Equity Down Months", fontsize=12, fontweight="bold", pad=12)
     ax.spines["top"].set_visible(False)
@@ -229,7 +276,24 @@ def plot_down_market(clean):
     plt.close()
 
 
-def export_outputs(clean, corr_df):
+def calculate_downside_stats(clean):
+    down = clean[clean["Equities"] < 0]
+
+    # Downside capture ratio: compounded ARBIX return / compounded Equity return, equity-down months only
+    arbix_compound  = (1 + down["ARBIX"]).prod() - 1
+    equity_compound = (1 + down["Equities"]).prod() - 1
+    dcr = round((arbix_compound / equity_compound)*100, 4)
+
+    # Down-market beta: Cov(ARBIX, Equities) / Var(Equities), equity-down months only
+    down_beta = round(down["ARBIX"].cov(down["Equities"]) / down["Equities"].var(), 4)
+
+    return pd.DataFrame([
+        {"Statistic": "Downside Capture Ratio (ARBIX vs Equities)", "Value": dcr,      "N (down months)": len(down)},
+        {"Statistic": "Down-Market Beta (ARBIX vs Equities)",        "Value": down_beta, "N (down months)": len(down)},
+    ])
+
+
+def export_outputs(clean, corr_df, downside_df):
     export = clean.copy()
     export.index = export.index.strftime("%b %Y")
     export.index.name = "Date"
@@ -237,6 +301,7 @@ def export_outputs(clean, corr_df):
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
         export.to_excel(writer, sheet_name="Clean_Data")
         corr_df.to_excel(writer, sheet_name="Correlations", index=False)
+        downside_df.to_excel(writer, sheet_name="Downside_Stats", index=False)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -244,6 +309,7 @@ if __name__ == "__main__":
     raw              = load_raw_data()
     clean            = build_clean_dataset(raw)
     corr_df, periods = calculate_correlations(clean)
+    downside_df      = calculate_downside_stats(clean)
 
     plot_correlation_bars(corr_df, periods)
     plot_rolling_correlations(clean)
@@ -252,5 +318,5 @@ if __name__ == "__main__":
     plot_volatility(clean)
     plot_down_market(clean)
 
-    export_outputs(clean, corr_df)
+    export_outputs(clean, corr_df, downside_df)
     print("Done.")
