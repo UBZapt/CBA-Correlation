@@ -10,7 +10,6 @@ All runtime parameters are declared at the top of `Code.py`:
 | `OUTPUT_FILE` | `Clean_Data.xlsx` | Final output workbook |
 | `SHEETS` | `{"ARBIX", "Bonds", "Equities"}` | Sheet name mapping |
 | `MIN_OBS` | `11` | Minimum observations required for a valid correlation (lowered from 12 to accommodate the 11-month Covid Stress window Feb–Dec 2020) |
-| `ROLLING_WINDOW` | `12` | Rolling window length (months) for rolling correlation charts |
 | `PERIODS` | Dict of sub-period labels → (start, end) timestamps | Subperiods for correlation analysis |
 
 The full-sample period label is generated dynamically from the actual cleaned data range and prepended to `PERIODS` at runtime.
@@ -27,6 +26,16 @@ The full-sample period label is generated dynamically from the actual cleaned da
 Covid Stress starts Feb 2020 (first month of market stress) and ends Dec 2020 (pre-vaccine rollout normalisation). The 11-month window is intentional and drives the `MIN_OBS = 11` setting.
 
 `_PERIOD_TYPES` and the colour constants `_STRESS_COLOR` / `_GROWTH_COLOR` are module-level helpers used by `plot_correlation_bars` to apply background shading.
+
+### Colour Palette
+
+Three teal shades matched to the reference Combo Chart and Clustered Bar Chart inputs:
+
+| Constant | Hex | Role |
+|----------|-----|------|
+| `TEAL_DARK` | `#1A5F5F` | Primary series (ARBIX–Equity, All Months, ARBIX volatility) |
+| `TEAL_MID` | `#2E9E8A` | Third series (Bonds in volatility chart) |
+| `TEAL_LIGHT` | `#93D4CB` | Secondary series (ARBIX–Bond, Equity Down Months, Equities volatility) |
 
 ---
 
@@ -59,37 +68,41 @@ Dates remain as `datetime` objects throughout; string formatting happens only at
 2. Prepends it to `PERIODS`.
 3. For each period, slices `clean` and checks observation count against `MIN_OBS`. If below threshold, returns `NaN` and prints a warning.
 4. Computes Pearson correlation (rounded to 4 d.p.) between `ARBIX` and each of `Equities` and `Bonds`.
-5. Returns a `corr_df` summary table and the complete `all_periods` dict (used for chart x-labels).
+5. Returns a `corr_df` summary table and the complete `all_periods` dict (used for chart y-labels).
+
+### `_circle_legend(ax, handles, loc, ncol, bbox_to_anchor)`
+Helper that renders a legend using filled-circle markers to match the style of the reference Combo Chart (Input 1). Called by all three chart functions. Parameters: `ax` (axes), `handles` (list of `Line2D` with `marker="o"`), `loc` (legend anchor string), `ncol` (number of columns in legend), `bbox_to_anchor` (optional tuple to anchor the legend outside the axes area — used when the legend must not overlap chart content).
 
 ### `plot_correlation_bars(corr_df, all_periods)`
-Clustered bar chart of CBA-Equity and CBA-Bond correlations across all periods.
+Vertical clustered bar chart of ARBIX–Equity and ARBIX–Bond correlations across all periods. Bars stand upright and are grouped along a horizontal x-axis (one cluster per period).
 
 **Key design choices:**
-- Background shading applied per sub-period column: soft red (`_STRESS_COLOR`, α = 0.06) for Periods of Stress (GFC, Covid Stress); soft green (`_GROWTH_COLOR`, α = 0.06) for Periods of Growth (Post-GFC Expansion, CB Renaissance). Shading indices are hardcoded to positions 1–4 in `all_periods` (position 0 is always the Full Sample).
-- Extended legend: includes CBA-Equity, CBA-Bond bars plus shading swatches labelled "Period of Stress" and "Period of Growth".
-- Figure size widened to 14 × 7 inches to accommodate multi-line x-tick labels.
+- **Vertical bar layout**: `ax.bar()` with two bars per x-position (`x ± width/2`). ARBIX–Equity bar uses `TEAL_DARK` (left of cluster); ARBIX–Bond bar uses `TEAL_LIGHT` (right of cluster).
+- **Shaded vertical column bands** applied per sub-period using `ax.axvspan()`: soft red (`_STRESS_COLOR`, α = 0.08) for Periods of Stress (GFC, Covid Stress); soft green (`_GROWTH_COLOR`, α = 0.08) for Periods of Growth (Post-GFC Expansion, CB Renaissance). Position 0 (Full Sample) is unshaded.
+- **Legend labels**: "ARBIX – MSCI World Index" (formerly CBA-Equity) and "ARBIX – iShares Treasury Bond ETF" (formerly CBA-Bond), plus stress/growth shading swatches.
+- **Circle legend** floated above the chart area using `bbox_to_anchor=(0.5, 1.02)` with `loc="lower center"` and `ncol=4` (all four items in one row). This ensures the legend never overlaps bars regardless of bar height.
+- **Y-axis label**: "Correlation Coefficients".
+- No chart title.
 
 Saves `Correlation_Chart.png`.
 
-### `plot_rolling_correlations(clean)`
-Line chart of rolling `ROLLING_WINDOW`-month Pearson correlations for ARBIX vs Equities and ARBIX vs Bonds. Saves `Rolling_Correlation_Chart.png`.
-
-### `plot_scatter(clean, other, color, filename)`
-Scatter plot of ARBIX monthly returns against a specified series (`Equities` or `Bonds`), with an OLS trend line and correlation coefficient in the legend. Saves to the given filename.
-
 ### `plot_volatility(clean)`
-Bar chart of **annualised** return standard deviations for ARBIX, Equities, and Bonds.
+Horizontal bar chart of **annualised** return standard deviations for ARBIX, Equities, and Bonds. Bars run left-to-right with ARBIX at the top, Equities in the middle, and Bonds at the bottom.
 
-**Processing step:** `monthly_std × √12` converts monthly standard deviation to an annualised figure. Values are then multiplied by 100 and displayed as percentage points (e.g., `"5.24%"`). Y-axis is labelled "Annualised Volatility (%)".
+**Processing step:** `monthly_std × √12` converts monthly standard deviation to an annualised figure. Values are multiplied by 100 and displayed as percentage points (e.g., `"5.24%"`). X-axis is labelled "Annualised Volatility (%)".
+
+**Layout:** `ax.barh()` plots bottom-to-top, so the data lists are ordered `[Bonds, Equities, ARBIX]` to produce the desired top-to-bottom visual order (ARBIX → Equities → Bonds). Data labels are placed to the right of each bar end.
+
+**Legend:** Stacked vertically (`ncol=1`) in the order ARBIX → Equities → Bonds, anchored to the right of the axes via `bbox_to_anchor=(1.02, 0.5)` with `loc="center left"` so it never overlaps the bars. No chart title.
 
 Saves `Volatility_Chart.png`.
 
 ### `plot_down_market(clean)`
-Bar chart comparing average ARBIX monthly return across all months versus months when Equities had a negative return.
+Vertical bar chart comparing average ARBIX monthly return across all months versus months when Equities had a negative return.
 
-**Layout fixes applied:**
-- Bars positioned at `x = [0.42, 0.84]` (width = 0.32) with `xlim = [0.05, 1.25]`, reducing the centre gap and moving bars away from the y-axis to prevent x-tick label overlap with the y-axis.
-- Data-label y-offset set dynamically as `4% of yrange` (instead of a fixed 0.0003), keeping labels proportionally close to bar tops regardless of scale.
+**Layout:** Bars positioned at `x = [0.42, 0.84]` (width = 0.32) with `xlim = [0.05, 1.25]`, reducing the centre gap and moving bars away from the y-axis to prevent x-tick label overlap.  Data-label y-offset set dynamically as `2% of yrange`.
+
+**Visual changes:** `TEAL_DARK` for "All Months", `TEAL_LIGHT` for "Equity Down Months". Circle legend at upper right with two columns (Input 1 style). No chart title.
 
 Saves `Down_Market_Chart.png`.
 
@@ -118,7 +131,7 @@ Single export step: converts the datetime index to `"Mon YYYY"` strings, then wr
 4. Keep `clean` in memory; pass it directly to correlation and chart steps (no write/re-read of `Clean_Data.xlsx` mid-workflow).
 5. Compute correlations for the dynamic full-sample label and all configured sub-periods.
 6. Compute downside capture ratio and down-market beta over equity-down months.
-7. Generate six charts (see Outputs).
+7. Generate three charts: `Correlation_Chart.png`, `Volatility_Chart.png`, `Down_Market_Chart.png`.
 8. Write `Clean_Data.xlsx` once, at the end (three sheets: `Clean_Data`, `Correlations`, `Downside_Stats`).
 
 ---
@@ -135,6 +148,9 @@ Single export step: converts the datetime index to `"Mon YYYY"` strings, then wr
 - Data represents monthly simple returns (decimals); no log-return conversion applied.
 - `format="mixed"` date parsing is required because ARBIX uses full month names (`JANUARY`) while Bonds and Equities use three-letter abbreviations (`AUG`); `str.title()` normalises case before parsing.
 - Subperiods with fewer than `MIN_OBS` (11) observations produce `NaN` correlation rather than a potentially unreliable estimate.
+- The Correlation chart uses vertical bars (value axis = y-axis), so "Correlation Coefficients" is applied as the y-axis label.
+- The Volatility chart uses horizontal bars (value axis = x-axis), so "Annualised Volatility (%)" is applied as the x-axis label.
+- Scatter plots and the 12-month rolling correlation chart have been removed as they are no longer required by the analysis.
 
 ---
 
@@ -158,10 +174,7 @@ Common window after trimming: **Jan 2003 – Feb 2026** (driven by ARBIX on both
 |------|---------|
 | `Clean_Data.xlsx` — sheet `Clean_Data` | 278-row monthly returns table (ARBIX, Bonds, Equities) with `"Mon YYYY"` string index |
 | `Clean_Data.xlsx` — sheet `Correlations` | Pearson correlation table by period |
-| `Correlation_Chart.png` | Clustered bar chart: CBA-Equity and CBA-Bond correlations by period; stress/growth periods highlighted with background shading |
-| `Rolling_Correlation_Chart.png` | 12-month rolling correlation lines: ARBIX vs Equities and ARBIX vs Bonds |
-| `Scatter_Equities.png` | Scatter of ARBIX vs Equities monthly returns with OLS trend line |
-| `Scatter_Bonds.png` | Scatter of ARBIX vs Bonds monthly returns with OLS trend line |
-| `Volatility_Chart.png` | Bar chart of annualised return standard deviations (ARBIX, Equities, Bonds), displayed as % |
-| `Down_Market_Chart.png` | Bar chart: average ARBIX return — all months vs equity down months |
 | `Clean_Data.xlsx` — sheet `Downside_Stats` | Downside capture ratio and down-market beta vs Equities, with observation count |
+| `Correlation_Chart.png` | Horizontal clustered bar chart: ARBIX–Equity and ARBIX–Bond correlations by period; stress/growth periods highlighted with horizontal background shading |
+| `Volatility_Chart.png` | Vertical bar chart of annualised return standard deviations (ARBIX, Equities, Bonds), displayed as % |
+| `Down_Market_Chart.png` | Vertical bar chart: average ARBIX return — all months vs equity down months |
