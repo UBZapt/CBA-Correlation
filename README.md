@@ -1,4 +1,4 @@
-# CBA-Correlation
+# CBA-Analysis
 
 This code makes up the analysis part of a project aimed at pitching a Convertible Bond Arbitrage (CBA) fund to a Pension fund. The Pension fund holds long-only positions in equities and bonds. We use monthly return data. The goal is to demonstrate how well the strategy diversifies a portfolio and holds up during adverse market conditions (hedge efficiency).
 
