@@ -10,13 +10,11 @@ SHEETS      = {"ARBIX": "ARBIX", "Bonds": "Bonds", "Equities": "Equities"}
 MIN_OBS     = 11
 
 PERIODS = {
-    "GFC\n(Dec 2007 – Jun 2009)":                (pd.Timestamp("2007-12-01"), pd.Timestamp("2009-06-01")),
-    "Post-GFC Expansion\n(Jan 2012 – Dec 2013)":  (pd.Timestamp("2012-01-01"), pd.Timestamp("2013-12-01")),
-    "Covid Stress\n(Feb 2020 – Dec 2020)":         (pd.Timestamp("2020-02-01"), pd.Timestamp("2020-12-01")),
-    "CB Renaissance\n(Jan 2023 – Dec 2025)":       (pd.Timestamp("2023-01-01"), pd.Timestamp("2025-12-01")),
+    "GFC\n(Dec 2007 – Jun 2009)":                ("stress", pd.Timestamp("2007-12-01"), pd.Timestamp("2009-06-01")),
+    "Post-GFC Expansion\n(Jan 2012 – Dec 2013)":  ("growth", pd.Timestamp("2012-01-01"), pd.Timestamp("2013-12-01")),
+    "Covid Stress\n(Feb 2020 – Dec 2020)":         ("stress", pd.Timestamp("2020-02-01"), pd.Timestamp("2020-12-01")),
+    "CB Renaissance\n(Jan 2023 – Dec 2025)":       ("growth", pd.Timestamp("2023-01-01"), pd.Timestamp("2025-12-01")),
 }
-
-_PERIOD_TYPES = {1: "stress", 2: "growth", 3: "stress", 4: "growth"}
 _STRESS_COLOR = "#B22222"
 _GROWTH_COLOR = "#2E7D32"
 
@@ -86,7 +84,13 @@ def calculate_correlations(clean):
     full_label = (
         f"Full Sample\n({clean.index[0].strftime('%b %Y')} – {clean.index[-1].strftime('%b %Y')})"
     )
-    all_periods = {full_label: (clean.index.min(), clean.index.max()), **PERIODS}
+
+    # Build flat dicts so the loop and chart function don't need to know the tuple shape
+    all_periods  = {full_label: (clean.index.min(), clean.index.max())}
+    period_types = {}  # label -> "stress" | "growth"; full sample has no entry (no shading)
+    for label, (ptype, start, end) in PERIODS.items():
+        all_periods[label]  = (start, end)
+        period_types[label] = ptype
 
     records = []
     for label, (start, end) in all_periods.items():
@@ -105,7 +109,7 @@ def calculate_correlations(clean):
             "N (months)": n,
         })
 
-    return pd.DataFrame(records), all_periods
+    return pd.DataFrame(records), all_periods, period_types
 
 
 # ── Chart Helpers ──────────────────────────────────────────────────────────────
@@ -132,7 +136,7 @@ def _circle_legend(ax, handles, loc="upper left", ncol=None, bbox_to_anchor=None
 
 # ── Chart Functions ────────────────────────────────────────────────────────────
 
-def plot_correlation_bars(corr_df, all_periods):
+def plot_correlation_bars(corr_df, all_periods, period_types):
     """
     Vertical clustered bar chart of ARBIX–Equity and ARBIX–Bond correlations.
     Bars are grouped vertically along a horizontal x-axis. Shaded column bands
@@ -147,8 +151,10 @@ def plot_correlation_bars(corr_df, all_periods):
     fig, ax = plt.subplots(figsize=(14, 7))
 
     # Shaded vertical column bands: stress = soft red, growth = soft green
-    for i in range(1, n_periods):
-        ptype       = _PERIOD_TYPES.get(i)
+    for i, label in enumerate(chart_labels):
+        ptype = period_types.get(label)
+        if ptype is None:
+            continue  # Full Sample — no shading
         shade_color = _STRESS_COLOR if ptype == "stress" else _GROWTH_COLOR
         ax.axvspan(i - 0.48, i + 0.48, color=shade_color, alpha=0.08, zorder=0)
 
@@ -304,7 +310,7 @@ def calculate_downside_stats(clean):
 
     arbix_compound  = (1 + down["ARBIX"]).prod() - 1
     equity_compound = (1 + down["Equities"]).prod() - 1
-    dcr = round((arbix_compound / equity_compound) * 100, 4)
+    dcr = round((arbix_compound / equity_compound) * 100, 4) if equity_compound != 0 else np.nan
 
     down_beta = round(down["ARBIX"].cov(down["Equities"]) / down["Equities"].var(), 4)
 
@@ -329,10 +335,10 @@ def export_outputs(clean, corr_df, downside_df):
 if __name__ == "__main__":
     raw              = load_raw_data()
     clean            = build_clean_dataset(raw)
-    corr_df, periods = calculate_correlations(clean)
-    downside_df      = calculate_downside_stats(clean)
+    corr_df, periods, period_types = calculate_correlations(clean)
+    downside_df                    = calculate_downside_stats(clean)
 
-    plot_correlation_bars(corr_df, periods)
+    plot_correlation_bars(corr_df, periods, period_types)
     plot_volatility(clean)
     plot_down_market(clean)
 
